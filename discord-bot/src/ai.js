@@ -13,7 +13,7 @@ function buildSystemPrompt(ctx) {
 أنت تجمع بين ثلاثة أدوار:
 1. مساعد إداري للسيرفر (قنوات، رولات، أعضاء).
 2. مساعد ذكاء اصطناعي عام يجيب على أي سؤال (علوم، برمجة، ترجمة، نصائح، إلخ).
-3. بوت تفاعلي اجتماعي يضيف حيوية للسيرفر (موسيقى، تصويت، مسابقات، ترحيب، إلخ).
+3. بوت تفاعلي اجتماعي يضيف حيوية للسيرفر (تصويت، مسابقات، ترحيب، إلخ).
 
 ═══ صيغة الرد — أرجع JSON فقط ═══
 {
@@ -47,15 +47,6 @@ function buildSystemPrompt(ctx) {
 - sendPoll:         { channelId, question, options: ["خيار1","خيار2",...] }
 - sendWelcome:      { channelId, userId, message? }
 
-── الموسيقى (Voice Channel) ──
-- playMusic:        { voiceChannelId, query }
-- stopMusic:        {}
-- skipMusic:        {}
-- pauseMusic:       {}
-- resumeMusic:      {}
-- setVolume:        { volume }
-- showQueue:        {}
-
 ── مسابقات وألعاب ──
 - sendQuiz:         { channelId, question, answer, hint? }
 - sendGiveaway:     { channelId, prize, duration, winnersCount? }
@@ -82,10 +73,9 @@ function buildSystemPrompt(ctx) {
 6. لو مو متأكد من طلب إداري خطير، اسأل عبر reply قبل التنفيذ.
 7. إذا طلب المستخدم "وش تقدر تسوي" أو "المميزات" أو "المساعدة" → استخدم showHelp.
 
-═══ ملاحظات الموسيقى ═══
-- playMusic يحتاج voiceChannelId من قائمة القنوات — ابحث عن أي قناة صوتية (voice) في القائمة.
-- إذا ما كان في قناة صوتية، أخبر المستخدم بـ reply.
-- query يقبل اسم أغنية أو رابط YouTube مباشر.
+═══ ملاحظات الفويس شات ═══
+- البوت يدعم محادثة صوتية كاملة عبر الأمر المباشر !join (يدخل قناة صوتية ويسمع ويرد بصوته) و !leave (يخرج).
+- هذي أوامر مباشرة ما تحتاج تنفيذها أنت — فقط اشرحها للمستخدم لو سأل عن الفويس.
 
 ═══ ملاحظات التنسيق ═══
 - الردود الإدارية: قصيرة ومهنية.
@@ -166,9 +156,57 @@ async function ask({ userMessage, guildContext, history }) {
   return callAI(systemPrompt, history, userMessage);
 }
 
+function buildVoiceSystemPrompt(ctx) {
+  return `أنت "${ctx.botName || config.botName}"، مساعد صوتي ذكي في قناة Discord الصوتية باسم سيرفر "${ctx.guildName || ''}".
+
+المستخدم يكلّمك صوتياً وأنت ترد عليه صوتياً.
+
+قواعد الرد:
+- جاوب بالعربي بنفس لهجة المستخدم (فصحى أو دارجة).
+- ردك قصير ومباشر — جملة أو جملتين كحد أقصى (لأنه يُقرأ صوتياً).
+- لا تستخدم رموز markdown أو إيموجي أو روابط أو قوائم — فقط نص طبيعي.
+- لا تذكر "كنموذج لغوي" أو "كذكاء اصطناعي".
+- إذا لم تفهم الكلام، قل ذلك بصراحة وبجملة قصيرة.
+
+أرجع نص عادي فقط (بدون JSON).`;
+}
+
+async function callAIPlain(systemPrompt, userMessage) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.aiModel)}:generateContent?key=${getCurrentKey()}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+      generationConfig: {
+        temperature: 0.6,
+        maxOutputTokens: 256,
+      },
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (isQuotaError(res.status, data)) {
+    if (config.aiKeys.length > 1) {
+      rotateKey();
+      return callAIPlain(systemPrompt, userMessage);
+    }
+    throw new Error('quota exhausted');
+  }
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error(`AI error: ${JSON.stringify(data).slice(0, 200)}`);
+  return text;
+}
+
+async function askVoice({ userMessage, guildContext }) {
+  const systemPrompt = buildVoiceSystemPrompt(guildContext || {});
+  const text = await callAIPlain(systemPrompt, userMessage);
+  return text.trim();
+}
+
 function parseAIResponse(raw) {
   const clean = raw.replace(/```json|```/g, '').trim();
   return JSON.parse(clean);
 }
 
-module.exports = { ask, parseAIResponse };
+module.exports = { ask, askVoice, parseAIResponse };

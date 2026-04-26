@@ -16,19 +16,6 @@ function resolveChannelType(value) {
 const POLL_EMOJIS = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
 
 // ─────────────────────────────────────────
-// Music state (in-memory per guild)
-// ─────────────────────────────────────────
-
-const musicState = new Map(); // guildId → { queue, player, connection, volume }
-
-function getMusicState(guildId) {
-  if (!musicState.has(guildId)) {
-    musicState.set(guildId, { queue: [], volume: 80, player: null, connection: null });
-  }
-  return musicState.get(guildId);
-}
-
-// ─────────────────────────────────────────
 // Command handlers
 // ─────────────────────────────────────────
 
@@ -216,140 +203,6 @@ const handlers = {
     return `تم إرسال رسالة الترحيب بـ **${member.displayName}**`;
   },
 
-  // ── الموسيقى ─────────────────────────────
-
-  async playMusic(action, { guild, message }) {
-    // نتحقق إن الباكجات موجودة
-    let voiceModule, ytdlModule, playerModule;
-    try {
-      voiceModule = require('@discordjs/voice');
-      ytdlModule = require('ytdl-core');
-      playerModule = voiceModule;
-    } catch {
-      throw new Error(
-        'مكتبات الموسيقى غير مثبّتة. شغّل:\nnpm install @discordjs/voice ytdl-core @discordjs/opus ffmpeg-static'
-      );
-    }
-
-    const {
-      joinVoiceChannel,
-      createAudioPlayer,
-      createAudioResource,
-      AudioPlayerStatus,
-      VoiceConnectionStatus,
-    } = voiceModule;
-
-    const voiceCh = guild.channels.cache.get(action.voiceChannelId);
-    if (!voiceCh || voiceCh.type !== ChannelType.GuildVoice) {
-      throw new Error('القناة الصوتية غير موجودة أو غير صحيحة');
-    }
-
-    const state = getMusicState(guild.id);
-
-    // البحث عن URL أو استخدامه مباشرة
-    let url = action.query;
-    if (!ytdlModule.validateURL(url)) {
-      // query هو اسم أغنية → نبحث
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(action.query)}`;
-      // بدون API، نضيف الـ query للقائمة ونعلم المستخدم
-      throw new Error(
-        `للبحث باسم الأغنية مباشرة تحتاج youtube-search-without-api-key.\n` +
-        `استخدم رابط YouTube مباشر مثل:\nhttps://www.youtube.com/watch?v=...`
-      );
-    }
-
-    // الاتصال بالقناة الصوتية
-    if (!state.connection) {
-      state.connection = joinVoiceChannel({
-        channelId: voiceCh.id,
-        guildId: guild.id,
-        adapterCreator: guild.voiceAdapterCreator,
-      });
-    }
-
-    // إنشاء الـ player
-    if (!state.player) {
-      state.player = createAudioPlayer();
-      state.connection.subscribe(state.player);
-
-      state.player.on(AudioPlayerStatus.Idle, () => {
-        state.queue.shift();
-        if (state.queue.length > 0) {
-          playNext(state, createAudioResource, ytdlModule);
-        } else {
-          state.connection?.destroy();
-          state.connection = null;
-          state.player = null;
-          musicState.delete(guild.id);
-        }
-      });
-    }
-
-    state.queue.push({ url, title: action.query });
-
-    if (state.player.state.status === AudioPlayerStatus.Idle || state.queue.length === 1) {
-      await playNext(state, createAudioResource, ytdlModule);
-    }
-
-    return `تم إضافة **${action.query}** لقائمة التشغيل 🎵`;
-  },
-
-  async stopMusic(_action, { guild }) {
-    const state = getMusicState(guild.id);
-    state.queue = [];
-    state.player?.stop();
-    state.connection?.destroy();
-    musicState.delete(guild.id);
-    return 'تم إيقاف الموسيقى ومغادرة القناة الصوتية ⏹️';
-  },
-
-  async skipMusic(_action, { guild }) {
-    const state = getMusicState(guild.id);
-    if (!state.player) throw new Error('ما في موسيقى تشتغل الحين');
-    state.player.stop();
-    return 'تم تخطي الأغنية الحالية ⏭️';
-  },
-
-  async pauseMusic(_action, { guild }) {
-    const state = getMusicState(guild.id);
-    if (!state.player) throw new Error('ما في موسيقى تشتغل الحين');
-    state.player.pause();
-    return 'تم إيقاف الموسيقى مؤقتاً ⏸️';
-  },
-
-  async resumeMusic(_action, { guild }) {
-    const state = getMusicState(guild.id);
-    if (!state.player) throw new Error('ما في موسيقى مُوقَفة');
-    state.player.unpause();
-    return 'تم استئناف التشغيل ▶️';
-  },
-
-  async setVolume(action, { guild }) {
-    const state = getMusicState(guild.id);
-    const vol = Math.max(0, Math.min(100, action.volume || 80));
-    state.volume = vol;
-    // يطبق على الـ resource الحالي إذا كان موجوداً
-    if (state.resource) state.resource.volume?.setVolume(vol / 100);
-    return `تم تغيير مستوى الصوت إلى **${vol}%** 🔊`;
-  },
-
-  async showQueue(action, { guild, message }) {
-    const ch = guild.channels.cache.get(action?.channelId) || message.channel;
-    const state = getMusicState(guild.id);
-    if (state.queue.length === 0) {
-      await ch.send('📭 قائمة التشغيل فارغة.');
-      return 'تم عرض القائمة';
-    }
-    const list = state.queue.map((t, i) => `**${i + 1}.** ${t.title}`).join('\n');
-    const embed = new EmbedBuilder()
-      .setTitle('🎵 قائمة التشغيل')
-      .setDescription(list.slice(0, 4096))
-      .setColor('#1DB954')
-      .setFooter({ text: `${state.queue.length} أغنية في القائمة` });
-    await ch.send({ embeds: [embed] });
-    return 'تم عرض القائمة';
-  },
-
   // ── مسابقات وألعاب ───────────────────────
 
   async sendQuiz(action, { guild, message }) {
@@ -535,11 +388,11 @@ const handlers = {
             '`إنشاء تصويت: وش لعبتكم المفضلة؟ الخيارات: فورتنايت، ماينكرافت، GTA`',
         },
         {
-          name: '🎵 موسيقى',
+          name: '🎙️ فويس شات',
           value:
-            '`شغّل https://youtube.com/... في القناة الصوتية`\n' +
-            '`وقف الموسيقى` `تخطى` `اعمل pause` `اعمل resume`\n' +
-            '`غيّر الصوت لـ 50%` `وش في القائمة؟`',
+            '`!join` لدخول البوت قناتك الصوتية والاستماع لكلامك\n' +
+            'يحوّل صوتك لنص، يرد عليك، ويتكلم بصوته.\n' +
+            '`!leave` لخروج البوت من القناة الصوتية.',
         },
         {
           name: '🎮 مسابقات وسحوبات',
@@ -598,20 +451,6 @@ const handlers = {
     return `تم مسح سياق المحادثة`;
   },
 };
-
-// ─────────────────────────────────────────
-// Helper لتشغيل الأغنية التالية في القائمة
-// ─────────────────────────────────────────
-
-async function playNext(state, createAudioResource, ytdl) {
-  if (state.queue.length === 0) return;
-  const track = state.queue[0];
-  const stream = ytdl(track.url, { filter: 'audioonly', quality: 'lowestaudio' });
-  const resource = createAudioResource(stream, { inlineVolume: true });
-  resource.volume?.setVolume(state.volume / 100);
-  state.resource = resource;
-  state.player.play(resource);
-}
 
 // ─────────────────────────────────────────
 // منفّذ الأوامر الرئيسي

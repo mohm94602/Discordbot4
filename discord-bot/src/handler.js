@@ -9,6 +9,7 @@ const {
   rememberAssistantReply,
   getHistory,
 } = require('./memory');
+const voice = require('./voice');
 
 const activeReplies = new Set();
 const userCooldowns = new Map();
@@ -79,6 +80,30 @@ async function handleMessage(client, message) {
 
   const userText = extractUserText(client, message);
   if (!userText) return message.reply('مرحباً! قل لي وش تبي.');
+
+  if (/^join$/i.test(userText)) {
+    if (isAskOnly(message.author.id)) {
+      return message.reply(config.askOnlyDenyMessage);
+    }
+    try {
+      await voice.joinUserVoice(message);
+      return message.reply('🎙️ دخلت الفويس! كلّمني وأنا أسمعك وأرد عليك. اكتب `!leave` للخروج.');
+    } catch (err) {
+      return message.reply(`❌ ${err.message}`);
+    }
+  }
+
+  if (/^leave$/i.test(userText)) {
+    if (isAskOnly(message.author.id)) {
+      return message.reply(config.askOnlyDenyMessage);
+    }
+    try {
+      voice.leaveVoice(message.guild.id);
+      return message.reply('👋 خرجت من الفويس.');
+    } catch (err) {
+      return message.reply(`❌ ${err.message}`);
+    }
+  }
 
   const keyMatch = userText.match(/^\/?key([1-9]|10)$/i);
   if (keyMatch) {

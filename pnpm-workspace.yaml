@@ -39,6 +39,7 @@ packages:
   - lib/*
   - lib/integrations/*
   - scripts
+  - discord-bot
 
 catalog:
   '@replit/vite-plugin-cartographer': ^0.5.1
@@ -72,6 +73,9 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - unrs-resolver
+  - '@discordjs/opus'
+  - sodium-native
+  - ffmpeg-static
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms

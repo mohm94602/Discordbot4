@@ -1,0 +1,22 @@
+{
+  "name": "@workspace/discord-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord AI bot with conversation memory and Arabic command interface",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.19.2",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "ffmpeg-static": "^5.3.0",
+    "sodium-native": "^5.1.0",
+    "ytdl-core": "^4.11.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

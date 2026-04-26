@@ -1,0 +1,9 @@
+    1  git remote add origin https://mohm94602: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@github.com/mohm94602/Discordbot4.git
+    2  git push -u origin main
+    3  git remote remove origin
+    4  git remote add origin https://mohm94602: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@github.com/mohm94602/Discordbot4.git
+    5  git push -u origin main
+    6  git remote remove origin
+    7  git remote add origin https://mohm94602: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@github.com/mohm94602/Discordbot4.git
+    8  git push -u origin main
+    9  history > commands.txt

@@ -34,8 +34,10 @@ function getKeysCount() {
   return aiKeys.length;
 }
 
+const rawToken = (process.env.DISCORD_TOKEN_2 || process.env.DISCORD_TOKEN || '').trim();
+
 const config = {
-  token: process.env.DISCORD_TOKEN_2 || process.env.DISCORD_TOKEN,
+  token: rawToken,
   clientId: process.env.CLIENT_ID,
   botName: process.env.BOT_NAME || 'DevBot',
   adminId: process.env.ADMIN_ID,
